@@ -1,0 +1,40 @@
+{
+  "name": "@supersemantics/vsl-core",
+  "version": "0.1.0",
+  "description": "Framework-agnostic and model-agnostic VSL (VERBA Specification Language) governance primitives -- TypeScript port of vsl-core.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && node scripts/copy-catalog-data.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^4.1.11",
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.11"
+  },
+  "keywords": [
+    "governance",
+    "ai-safety",
+    "guardrails",
+    "audit-log",
+    "vsl",
+    "verba"
+  ]
+}
