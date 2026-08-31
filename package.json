@@ -4,12 +4,14 @@
   "description": "Framework-agnostic and model-agnostic VSL (VERBA Specification Language) governance primitives -- TypeScript port of vsl-core.",
   "license": "MIT",
   "type": "module",
-  "main": "./dist/index.js",
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": "./dist/index.js",
+      "require": "./dist/cjs/index.js"
     }
   },
   "files": [
@@ -19,7 +21,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && node scripts/copy-catalog-data.mjs",
+    "build": "tsc -p tsconfig.build.json && tsc -p tsconfig.cjs.json && node scripts/mark-cjs-dist.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

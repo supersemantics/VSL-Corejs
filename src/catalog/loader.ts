@@ -5,24 +5,25 @@
  *
  * This module surfaces, deliberately and prominently, three real
  * data-quality findings in the source JSON rather than silently fixing
- * them -- see validate(). Do not trust drift_classes.json's own
+ * them -- see validate(). Do not trust the source data's own
  * metadata.total_drift_classes field; compute counts from the data
  * itself. Port of vsl_core/catalog/loader.py.
  *
- * The two JSON data files (drift_classes.json, legion_patterns.json) are
- * copied verbatim from vsl-core's own OSS data -- same license, same
- * package, same author. Read via fs.readFileSync relative to
- * import.meta.url rather than a JSON import-attribute (`with { type:
- * "json" }`), for compatibility with Node 18-21, which don't support that
- * syntax without an experimental flag; import.meta.url-relative fs reads
- * work identically across all supported Node versions.
+ * The underlying data (originally vsl-core's own drift_classes.json /
+ * legion_patterns.json, copied verbatim -- same license, same package,
+ * same author) is imported here from generated TS modules
+ * (drift_classes.data.ts / legion_patterns.data.ts -- see
+ * scripts/generate-catalog-data.mjs), not read from disk at runtime. This
+ * package ships both ESM and CommonJS builds; a runtime
+ * fs.readFileSync(..., import.meta.url) approach works under ESM but
+ * import.meta doesn't exist under CommonJS at all -- a compile error, not
+ * just a runtime one. A plain `export const` TS module compiles
+ * identically under both module targets with no bundler or
+ * import.meta/__dirname branching required.
  */
 
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-
-const CATALOG_DIR = dirname(fileURLToPath(import.meta.url));
+import { driftClassesData } from "./drift_classes.data.js";
+import { legionPatternsData } from "./legion_patterns.data.js";
 
 export const CATEGORIES = ["external", "internal", "systemic", "linguistic", "authority"] as const;
 export type Category = (typeof CATEGORIES)[number];
@@ -122,25 +123,12 @@ export interface LegionEntry {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type RawJson = any;
 
-function readJson(filename: string): RawJson {
-  const raw = readFileSync(join(CATALOG_DIR, filename), "utf-8");
-  return JSON.parse(raw);
-}
-
-let cachedDriftClassesRaw: RawJson | null = null;
 function rawDriftClasses(): RawJson {
-  if (cachedDriftClassesRaw === null) {
-    cachedDriftClassesRaw = readJson("drift_classes.json");
-  }
-  return cachedDriftClassesRaw;
+  return driftClassesData;
 }
 
-let cachedLegionPatternsRaw: RawJson | null = null;
 function rawLegionPatterns(): RawJson {
-  if (cachedLegionPatternsRaw === null) {
-    cachedLegionPatternsRaw = readJson("legion_patterns.json");
-  }
-  return cachedLegionPatternsRaw;
+  return legionPatternsData;
 }
 
 function driftClassFromDict(code: string, data: RawJson): DriftClass {
