@@ -22,6 +22,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && tsc -p tsconfig.cjs.json && node scripts/mark-cjs-dist.mjs",
+    "prepare": "npm run build",
     "test": "vitest run",
     "test:watch": "vitest"
   },

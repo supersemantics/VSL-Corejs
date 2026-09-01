@@ -332,7 +332,7 @@ describe("Causal fields round-trip through JsonlLedgerStore", () => {
   let filePath: string;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "vsl-core-ts-ledger-roundtrip-"));
+    dir = mkdtempSync(join(tmpdir(), "vsl-corejs-ledger-roundtrip-"));
     filePath = join(dir, "ledger.jsonl");
   });
 
@@ -391,7 +391,7 @@ describe("JsonlLedgerStore", () => {
   let filePath: string;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "vsl-core-ts-ledger-"));
+    dir = mkdtempSync(join(tmpdir(), "vsl-corejs-ledger-"));
     filePath = join(dir, "ledger.jsonl");
   });
 

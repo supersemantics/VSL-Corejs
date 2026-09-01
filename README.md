@@ -101,7 +101,7 @@ subset.
 Not yet published to npm.
 
 ```bash
-npm install github:supersemantics/vsl-core-ts
+npm install github:supersemantics/vsl-corejs
 ```
 
 ## Layout
