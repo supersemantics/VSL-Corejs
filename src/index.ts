@@ -11,6 +11,7 @@
 
 export * from "./exceptions.js";
 export * from "./metrics.js";
+export * from "./rules_version.js";
 export * from "./identity.js";
 export * from "./constructs.js";
 export * from "./cluster.js";

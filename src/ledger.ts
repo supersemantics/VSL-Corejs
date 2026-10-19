@@ -22,6 +22,7 @@ import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import { LedgerIntegrityError } from "./exceptions.js";
+import { ASSURANCE_RULES_VERSION } from "./rules_version.js";
 
 export const GENESIS_HASH = "0".repeat(64);
 
@@ -63,6 +64,37 @@ export const RE_ENABLEMENT = LedgerEntryType.RE_ENABLEMENT;
 // the check -- no error, just quietly wrong.
 export const DRIFT_DETECTED_KEY = "drift_detected";
 export const VERIFICATION_RESULT_KEY = "result";
+
+/**
+ * Named payload keys of a gate-decision record (VerbaLedger.writeGateDecision).
+ * Identical to the Python package's spellings, so records from either can be
+ * read and compared the same way.
+ */
+export const PRIMITIVE_NAME_KEY = "primitive_name";
+export const GATE_ALLOWED_KEY = "allowed";
+export const RULES_VERSION_KEY = "rules_version";
+
+/**
+ * What writeGateDecision reads from a Gamma estimate. A GammaEstimate
+ * satisfies it; declared structurally so this module never imports metrics.
+ */
+export interface GateEstimate {
+  readonly gammaHat: number;
+  readonly deltaEstimationError: number;
+  robustGamma(): number;
+  requiredGammaHat(threshold: number): number;
+  sufficient(threshold: number): boolean;
+}
+
+export interface GateDecisionOptions extends Omit<WriteOptions, "payload"> {
+  /** Required for an Invariant; computed (and checked, if given) for a PreNode. */
+  allowed?: boolean;
+  /** The PreNode monitor's GammaEstimate. */
+  estimate?: GateEstimate;
+  /** The PreNode's gammaThreshold; required with estimate. */
+  gammaThreshold?: number;
+  extraPayload?: Record<string, unknown>;
+}
 
 /**
  * The two outcomes a VERIFICATION ledger entry's result can carry. Used
@@ -637,6 +669,90 @@ export class VerbaLedger {
   ): Promise<LedgerEntry> {
     const payload = { ...(options.extraPayload ?? {}), [VERIFICATION_RESULT_KEY]: result };
     return this.write(LedgerEntryType.VERIFICATION, identityKey, { ...options, payload });
+  }
+
+  /**
+   * Write one gate's allow/deny decision as a MONITOR entry in the standard
+   * gate-decision shape, so every agent records gates the same way. Port of
+   * VerbaLedger.write_gate_decision; the payload keys are identical.
+   *
+   * `primitiveName` is the gate's declared PreNode/Invariant `name`, which is
+   * what links the runtime record to the gate in the code. Pass `decisionId`
+   * so a decision's gate checks and its outcome can be read back together.
+   *
+   * For a PreNode, pass the monitor's GammaEstimate as `estimate` and the
+   * PreNode's `gammaThreshold`: `allowed` is then computed with
+   * estimate.sufficient(gammaThreshold), the same check the compiled gate
+   * makes, and the record carries gamma_hat, delta_estimation_error,
+   * robust_gamma, gamma_threshold and required_gamma_hat. An explicit
+   * `allowed` that disagrees throws rather than recording a contradiction.
+   * For an Invariant (no Gamma), pass `allowed` alone.
+   *
+   * Every record carries `rules_version` (ASSURANCE_RULES_VERSION) and
+   * `drift_detected = !allowed`. A denied gate is drift as far as audit() is
+   * concerned: follow it with the decision's VERIFICATION or TERMINAL entry.
+   * The record's own keys are merged last; extraPayload can never overwrite
+   * them.
+   */
+  async writeGateDecision(
+    identityKey: string,
+    primitiveName: string,
+    options: GateDecisionOptions = {}
+  ): Promise<LedgerEntry> {
+    const { allowed: givenAllowed, estimate, gammaThreshold, extraPayload, ...writeOptions } = options;
+    if (typeof primitiveName !== "string" || primitiveName.trim() === "") {
+      throw new Error(
+        "writeGateDecision needs the gate's declared name as primitiveName; " +
+          "without it the record cannot be linked to its gate."
+      );
+    }
+
+    let allowed: boolean;
+    let gateFields: Record<string, unknown> = {};
+    if (estimate !== undefined) {
+      if (gammaThreshold === undefined) {
+        throw new Error(
+          "writeGateDecision with an estimate needs the PreNode's gammaThreshold, " +
+            "so the record shows the bar the gate actually applied."
+        );
+      }
+      const computed = Boolean(estimate.sufficient(gammaThreshold));
+      if (givenAllowed !== undefined && givenAllowed !== computed) {
+        throw new Error(
+          `allowed=${givenAllowed} contradicts estimate.sufficient(${gammaThreshold}) = ${computed}; ` +
+            "refusing to record a gate decision that disagrees with the gate's own check."
+        );
+      }
+      allowed = computed;
+      gateFields = {
+        gamma_hat: estimate.gammaHat,
+        delta_estimation_error: estimate.deltaEstimationError,
+        robust_gamma: estimate.robustGamma(),
+        gamma_threshold: gammaThreshold,
+        required_gamma_hat: estimate.requiredGammaHat(gammaThreshold),
+      };
+    } else if (gammaThreshold !== undefined) {
+      throw new Error(
+        "gammaThreshold was given without an estimate; pass the monitor's " +
+          "GammaEstimate too, or neither for an Invariant."
+      );
+    } else if (typeof givenAllowed !== "boolean") {
+      throw new Error(
+        `writeGateDecision needs allowed=true/false when no estimate is given (got ${JSON.stringify(givenAllowed)}).`
+      );
+    } else {
+      allowed = givenAllowed;
+    }
+
+    const payload = {
+      ...(extraPayload ?? {}),
+      ...gateFields,
+      [PRIMITIVE_NAME_KEY]: primitiveName,
+      [GATE_ALLOWED_KEY]: allowed,
+      [RULES_VERSION_KEY]: ASSURANCE_RULES_VERSION,
+      [DRIFT_DETECTED_KEY]: !allowed,
+    };
+    return this.write(LedgerEntryType.MONITOR, identityKey, { ...writeOptions, payload });
   }
 
   /**
