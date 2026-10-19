@@ -13,6 +13,7 @@ import {
   JACOBIAN_RED_FLAG_THRESHOLD,
   KL_MONITORING_THRESHOLD,
   ROBUST_GAMMA_DEFAULT_THRESHOLD,
+  ROBUST_GAMMA_HIGH_STAKES_THRESHOLD,
   Threshold,
 } from "../src/metrics.js";
 
@@ -56,11 +57,43 @@ describe("GammaEstimate", () => {
     expect(estimate.robustGamma()).toBeCloseTo(1.0);
   });
 
-  it("sufficient() gates on robustGamma, not raw gammaHat", () => {
-    // gammaHat clears the 1.1 default threshold, but with delta=1.0 the
-    // robust gamma (1.0) does not.
+  it("a delta larger than the threshold's allowance raises the bar", () => {
+    // delta=1.0 against 1.1: the bar becomes 1 + 1.0 = 2.0; exactly 2.0 fails.
     const estimate = new GammaEstimate({ gammaHat: 2.0, deltaEstimationError: 1.0 });
+    expect(estimate.requiredGammaHat()).toBeCloseTo(2.0);
     expect(estimate.sufficient()).toBe(false);
+    expect(new GammaEstimate({ gammaHat: 1.15, deltaEstimationError: 0.2 }).sufficient(1.1)).toBe(false);
+    expect(new GammaEstimate({ gammaHat: 1.25, deltaEstimationError: 0.2 }).sufficient(1.1)).toBe(true);
+  });
+
+  it("a delta within the threshold's allowance does not raise the bar", () => {
+    // 1.1 already includes a 10% allowance; delta=0.1 must not count it twice.
+    // (Before rules version 2026.10 this was denied: 1.15 / 1.1 = 1.045 < 1.1.)
+    const estimate = new GammaEstimate({ gammaHat: 1.15, deltaEstimationError: 0.1 });
+    expect(estimate.requiredGammaHat(ROBUST_GAMMA_DEFAULT_THRESHOLD)).toBe(ROBUST_GAMMA_DEFAULT_THRESHOLD);
+    expect(estimate.sufficient(ROBUST_GAMMA_DEFAULT_THRESHOLD)).toBe(true);
+  });
+
+  it.each([
+    [1.3, ROBUST_GAMMA_DEFAULT_THRESHOLD, true],
+    [1.05, ROBUST_GAMMA_DEFAULT_THRESHOLD, false],
+    [0.95, ROBUST_GAMMA_DEFAULT_THRESHOLD, false],
+    [1.1, ROBUST_GAMMA_DEFAULT_THRESHOLD, false],
+    [1.15, ROBUST_GAMMA_HIGH_STAKES_THRESHOLD, false],
+    [1.25, ROBUST_GAMMA_HIGH_STAKES_THRESHOLD, true],
+  ])("delta=0 behaviour is unchanged: gammaHat %s at %s -> %s", (gammaHat, threshold, expected) => {
+    expect(new GammaEstimate({ gammaHat }).sufficient(threshold)).toBe(expected);
+  });
+
+  it("a pass always means robustGamma above one", () => {
+    for (const delta of [0, 0.05, 0.1, 0.15, 0.2, 0.5]) {
+      for (const gammaHat of [0.9, 1.0, 1.05, 1.1, 1.11, 1.2, 1.21, 1.6]) {
+        const estimate = new GammaEstimate({ gammaHat, deltaEstimationError: delta });
+        if (estimate.sufficient(ROBUST_GAMMA_DEFAULT_THRESHOLD)) {
+          expect(estimate.robustGamma()).toBeGreaterThan(1.0);
+        }
+      }
+    }
   });
 
   it("sufficient() uses strict > against the threshold", () => {

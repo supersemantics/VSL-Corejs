@@ -11,6 +11,11 @@
  * This is the maximum estimation error the framework can absorb while
  * still guaranteeing gamma* > 1, not an arbitrarily rounded-up safety
  * margin.
+ *
+ * A threshold is therefore 1 + (the estimation-error allowance it already
+ * includes). GammaEstimate.sufficient() treats it as the minimum allowance:
+ * a monitor's own deltaEstimationError only raises the bar when it exceeds
+ * that allowance (see sufficient()).
  */
 export const ROBUST_GAMMA_DEFAULT_THRESHOLD = 1.1;
 
@@ -21,10 +26,16 @@ export const ROBUST_GAMMA_HIGH_STAKES_THRESHOLD = 1.2;
  * HIGH / MEDIUM / LOW confidence rating per the F1/F2 test.
  *
  * A mechanism satisfying F1 (pre-commitment) but only partial F2 (energy-
- * landscape modification) -- e.g. a system prompt or blocking guardrail
- * against a hosted model API -- caps at MEDIUM, never HIGH. This
- * distinction must never be blurred by any code or docs built on top of
- * this package.
+ * landscape modification) -- e.g. a gate in front of a hosted model API
+ * call whose prompt the application writes -- caps at MEDIUM, never HIGH.
+ * This distinction must never be blurred by any code or docs built on top
+ * of this package.
+ *
+ * The level measures one thing: how deeply governance shapes what the
+ * model produces. Whether a gate blocks the action before it happens is
+ * F1, and is best reported on its own rather than read off the level -- a
+ * gate with F1=true and F2=NONE is LOW here, yet it still stops every
+ * action it denies.
  *
  * Prefer constructing this via AssuranceBasis.derivedLevel rather than
  * setting it directly.
@@ -39,13 +50,24 @@ export enum AssuranceLevel {
  * How fully an intervention modifies the energy function
  * E_gov(x) = E_0(x) + U(x), per the source spec's F2 test.
  *
+ * F2 is judged at the call the gate guards: what does the application do
+ * to the model there? It is never earned by the gate itself -- allowing or
+ * blocking an action changes nothing about what a model produces.
+ *
  * FULL: directly modifies the energy function (logit adjustment,
- * activation steering, fine-tuning, constitutional training).
+ * activation steering, fine-tuning, constitutional training). Needs a
+ * model whose internals the application controls; a hosted model API
+ * rules it out.
  * PARTIAL: shapes output through attention/context rather than direct
- * energy modification (system prompts, RAG context injection).
+ * energy modification -- the application changes what the model sees (its
+ * own system prompt, RAG context injection, redacting the input).
  * INDIRECT: affects sampling without touching the energy function itself
  * (temperature adjustment).
- * NONE: no claimed effect on the energy function at all.
+ * NONE: the gate only allows or blocks, and the application shapes nothing
+ * at the guarded call -- or no model is involved at all (an amount cap
+ * before issueRefund, an allow-list before sendEmail).
+ *
+ * When unsure, pick the lowest value the code honestly supports.
  */
 export enum F2Modification {
   FULL = "FULL",
@@ -76,6 +98,8 @@ export enum F2Modification {
  * extension, not a spec fact: a check that runs early but does nothing to
  * the distribution isn't governance in the Gamma-sufficiency sense, so it
  * is treated the same as output-layer (LOW) rather than left undefined.
+ * LOW here describes influence on the model, not enforcement: such a gate
+ * still blocks every action it denies (that is its F1).
  *
  * The constructor requires f1PreCommitment to actually be a boolean and
  * f2Modification to actually be an F2Modification member. Before these
@@ -142,20 +166,36 @@ export interface GammaEstimateInit {
  * Three facts a caller needs at the point of use, not just discoverable by
  * reading sufficient()'s body or the module-level threshold constant:
  *
- * 1. sufficient() gates on robustGamma(), never on raw gammaHat. A
- *    gammaHat that clears `threshold` can still fail sufficient() once
- *    deltaEstimationError is applied -- if you're only logging/monitoring
- *    gammaHat, you will see passes that the gate itself treats as denials.
+ * 1. sufficient() requires gammaHat to be strictly greater than
+ *    requiredGammaHat(threshold) = max(threshold, 1 + delta). That is the
+ *    source spec's robust condition (gamma* = gammaHat / (1 + delta) > 1),
+ *    with the threshold as the minimum estimation-error allowance. Exactly
+ *    on the bar does not pass.
  * 2. The default threshold (ROBUST_GAMMA_DEFAULT_THRESHOLD = 1.1) already
- *    encodes a 10% estimation-error tolerance (delta = 0.1) baked into the
- *    comparison target, not a margin you additionally need to account for
- *    yourself when choosing deltaEstimationError.
+ *    encodes a 10% estimation-error tolerance (delta = 0.1). A
+ *    deltaEstimationError at or below that allowance does not raise the bar
+ *    again; only a larger one does (delta = 0.2 against 1.1 requires
+ *    gammaHat > 1.2). Before rules version 2026.10, sufficient() divided
+ *    gammaHat by (1 + delta) and then compared it with the threshold,
+ *    counting the allowance twice (delta = 0.1 required gammaHat > 1.21).
  * 3. deltaEstimationError is not a measured property of the monitor -- it
  *    is how the monitor's author declares reduced confidence in their own
  *    gammaHat estimate. Leaving it at the 0.0 default is itself a claim
  *    ("this gammaHat is exact"), not a neutral/safe absence of
  *    information; set it deliberately when the estimation method is
  *    noisier than that.
+ *
+ * What gammaHat is today: this package never measures Gamma; the monitor
+ * computes gammaHat and the gate only compares it. For most actions the
+ * spec's Gamma cannot be measured directly, so a monitor returns a gate
+ * score in Gamma units. Make it honest: build it as a ratio where 1.0 means
+ * break-even (a policy limit divided by the requested amount, a judge score
+ * divided by its break-even score), return 0.0 when input is missing or
+ * unreadable, never pass a raw 0-1 confidence (it can never exceed 1.1), and
+ * call a fixed 2.0-or-0.0 value what it is: a pass/fail encoding, not a
+ * measurement. For a rule that must never be broken, use an Invariant rather
+ * than a large threshold. Record each decision with
+ * VerbaLedger.writeGateDecision() if Gamma is to be tracked over time.
  */
 export class GammaEstimate {
   readonly gammaHat: number;
@@ -176,14 +216,26 @@ export class GammaEstimate {
   }
 
   /**
-   * True iff the robust (worst-case) Gamma exceeds the threshold.
+   * The value gammaHat must strictly exceed to pass:
+   * max(threshold, 1 + delta). The threshold is 1 plus the estimation-error
+   * allowance it already includes, so this is the larger of that allowance
+   * and the monitor's own declared deltaEstimationError.
+   */
+  requiredGammaHat(threshold: number = ROBUST_GAMMA_DEFAULT_THRESHOLD): number {
+    return Math.max(threshold, 1.0 + this.deltaEstimationError);
+  }
+
+  /**
+   * True iff gammaHat is strictly greater than requiredGammaHat(threshold).
+   * Whenever this is true, robustGamma() > 1 also holds: governance beats
+   * drift even in the worst case the declared delta allows.
    *
    * This exact name and signature is load-bearing: it is called directly
    * by PlainJsReferenceAdapter.compilePreNode and by any other adapter's
    * compiled gate.
    */
   sufficient(threshold: number = ROBUST_GAMMA_DEFAULT_THRESHOLD): boolean {
-    return this.robustGamma() > threshold;
+    return this.gammaHat > this.requiredGammaHat(threshold);
   }
 }
 
