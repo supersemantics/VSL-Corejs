@@ -97,10 +97,8 @@ subset.
 
 ## Install
 
-Not yet published to npm.
-
 ```bash
-npm install github:supersemantics/vsl-corejs
+npm install @supersemantics/vsl-core
 ```
 
 ## Layout
