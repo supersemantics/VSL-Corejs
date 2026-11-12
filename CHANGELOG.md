@@ -2,7 +2,7 @@
 
 What changed in each release, and why. Newest first. This package is the TypeScript port of [vsl-core](https://github.com/supersemantics/VSL-Core); releases track its rules, and the same assurance rules version means the same decisions in both.
 
-## 0.2.1 (unreleased): docs
+## 0.2.1 (2026-11-12, tag `v0.2.1`): docs
 
 The README no longer points to a separate hosted ledger package when it explains why `LedgerStore` is async. No code change.
 
