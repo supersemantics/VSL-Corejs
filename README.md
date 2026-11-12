@@ -55,10 +55,9 @@ contract (`compilePreNode`/`compileInvariant`, verified by
 Two deliberate departures from the Python source, both documented at the
 point they matter in code -- not silent translations, not oversights:
 
-**`LedgerStore` is async here; it's synchronous in Python.** A future
-HTTP-backed remote store for this package (the TS equivalent of
-[`vsl-core-ledger-client`](https://github.com/supersemantics/VSL-Core-ledger-client))
-cannot be synchronous in JavaScript -- there is no synchronous `fetch`.
+**`LedgerStore` is async here; it's synchronous in Python.** A store that
+keeps entries over the network cannot be synchronous in JavaScript -- there
+is no synchronous `fetch`.
 Rather than port the synchronous interface and break it later, every
 `LedgerStore` implementation here -- including `InMemoryLedgerStore` and
 `JsonlLedgerStore`, neither of which strictly needs it -- is
