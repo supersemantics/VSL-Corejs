@@ -1,8 +1,16 @@
 {
   "name": "@supersemantics/vsl-core",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Framework-agnostic and model-agnostic VSL (VERBA Specification Language) governance primitives -- TypeScript port of vsl-core.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/supersemantics/VSL-Corejs.git"
+  },
+  "homepage": "https://github.com/supersemantics/VSL-Corejs#readme",
+  "bugs": {
+    "url": "https://github.com/supersemantics/VSL-Corejs/issues"
+  },
   "type": "module",
   "main": "./dist/cjs/index.js",
   "module": "./dist/index.js",
@@ -39,5 +47,8 @@
     "audit-log",
     "vsl",
     "verba"
-  ]
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
 }

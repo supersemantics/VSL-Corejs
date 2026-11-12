@@ -2,6 +2,20 @@
 
 What changed in each release, and why. Newest first. This package is the TypeScript port of [vsl-core](https://github.com/supersemantics/VSL-Core); releases track its rules, and the same assurance rules version means the same decisions in both.
 
+## 0.2.2: published on npm
+
+The first version on npm: `npm install @supersemantics/vsl-core`. The code is unchanged from 0.2.1.
+
+**Before:** installed from GitHub (`npm install github:supersemantics/vsl-corejs`); the README said it
+was not yet on npm, and `package.json` named no repository.
+
+**After:** the README gives the npm command, `package.json` names the repository, homepage and issue
+tracker and publishes publicly, and a pushed release tag publishes from GitHub Actions through npm
+Trusted Publishing, with provenance (`.github/workflows/publish.yml`).
+
+**Why:** an install from a registry, with a version; and vsl-langgraphjs can then depend on a version
+range instead of a Git URL.
+
 ## 0.2.1 (2026-11-12, tag `v0.2.1`): docs
 
 The README no longer points to a separate hosted ledger package when it explains why `LedgerStore` is async. No code change.
