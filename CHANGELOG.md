@@ -2,7 +2,7 @@
 
 What changed in each release, and why. Newest first. This package is the TypeScript port of [vsl-core](https://github.com/supersemantics/VSL-Core); releases track its rules, and the same assurance rules version means the same decisions in both.
 
-## 0.2.3: first release published from GitHub Actions, with provenance
+## 0.2.3 (2026-11-13, tag `v0.2.3`): first release published from GitHub Actions, with provenance
 
 The code is unchanged from 0.2.2.
 
