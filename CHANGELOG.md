@@ -2,6 +2,21 @@
 
 What changed in each release, and why. Newest first. This package is the TypeScript port of [vsl-core](https://github.com/supersemantics/VSL-Core); releases track its rules, and the same assurance rules version means the same decisions in both.
 
+## 0.2.4: quickstart, gate a tool call in 5 lines
+
+The code is unchanged from 0.2.3.
+
+**Before:** the README's first example built a `PreNode` and a ledger, but never showed a gate stopping
+a tool call. There was no short, runnable path from `npm install` to a blocked call.
+
+**After:** a "Quickstart: gate a tool call in 5 lines" section near the top of the README: a rule, an
+`Invariant`, the gate, and the call before the tool, with each line explained in plain language. It
+also shows how to record each decision in the ledger, and points to the LangGraph.js adapter and its
+starter. The same code is in `examples/quickstart.mjs`.
+
+**Why:** the README is the npm page. Someone arriving there should be able to gate a real tool call
+in a minute, and see what the gate does and does not claim (it blocks; it doesn't steer a model).
+
 ## 0.2.3 (2026-11-13, tag `v0.2.3`): first release published from GitHub Actions, with provenance
 
 The code is unchanged from 0.2.2.
