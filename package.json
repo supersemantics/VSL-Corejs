@@ -1,6 +1,6 @@
 {
   "name": "@supersemantics/vsl-core",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Framework-agnostic and model-agnostic VSL (VERBA Specification Language) governance primitives -- TypeScript port of vsl-core.",
   "license": "MIT",
   "repository": {

@@ -17,6 +17,68 @@ runtime alongside them.
 - A byte-for-byte transliteration. A handful of things are deliberately adapted to TypeScript/Node rather than translated line-by-line -- see "Where this diverges from `vsl-core`" below. Every departure is a conscious design decision, documented in code and here, not an oversight.
 - A framework adapter. This package ships no LangGraph.js, LangChain.js, or other framework integration. Those belong in separate `@supersemantics/vsl-<framework>` packages, the same separation `vsl-core`'s Python ecosystem already follows (`vsl-langgraph`, `vsl-langchain`, `vsl-maf`).
 
+## Quickstart: gate a tool call in 5 lines
+
+```
+npm install @supersemantics/vsl-core
+```
+
+Your agent has a tool, say `issueRefund`. You want a rule checked **before** the tool runs, and the
+call stopped if the rule fails. That check is a gate:
+
+```javascript
+import {
+  AssuranceBasis, F2Modification, Invariant, InvariantViolation, PlainJsReferenceAdapter,
+} from "@supersemantics/vsl-core";
+
+const withinCap = async (args) => args.amount <= 500;
+const cap = new Invariant({ name: "refund-cap", description: "Refunds of $500 or less.", rule: withinCap,
+  assuranceBasis: new AssuranceBasis(true, F2Modification.NONE) });
+const gate = new PlainJsReferenceAdapter().compileInvariant(cap);
+
+async function refund(args) {
+  await gate(args);           // throws InvariantViolation if the rule fails
+  return issueRefund(args);   // only reached when it holds
+}
+```
+
+What each line does:
+
+- `withinCap` is the rule: plain code that answers yes or no for this one call.
+- `Invariant` gives the rule a name and says how strong the check is. It runs before the action
+  (`true`: F1) and changes nothing about what a model produces (`F2Modification.NONE`). That makes its
+  assurance level LOW: it blocks, but it doesn't steer a model. `vsl-core`'s README explains
+  [F1/F2](https://github.com/supersemantics/VSL-Core#the-f1f2-assurance-distinction-read-this-before-trusting-any-assurance-level).
+- `compileInvariant` turns the rule into a gate: an async function that resolves when the rule holds
+  and throws when it doesn't. `PlainJsReferenceAdapter` is the adapter for plain JavaScript, with no
+  agent framework underneath.
+- `await gate(args)` goes right before the tool. If it throws, the tool never runs.
+
+`refund({ orderId: "A200", amount: 9000 })` throws `InvariantViolation` ("Invariant 'refund-cap'
+violated") and no refund is issued. The whole file, ready to run, is
+[`examples/quickstart.mjs`](https://github.com/supersemantics/VSL-Corejs/blob/HEAD/examples/quickstart.mjs).
+
+**Keep a record of each decision.** The gate blocks on its own, but writes nothing down. To keep a
+hash-chained record of every allow and deny, write it from the rule:
+
+```javascript
+import { VerbaLedger } from "@supersemantics/vsl-core";
+
+const ledger = new VerbaLedger(); // in memory; new VerbaLedger(new JsonlLedgerStore("decisions.jsonl")) for a file
+
+const withinCap = async (args) => {
+  const allowed = args.amount <= 500;
+  await ledger.writeGateDecision("refund-agent", "refund-cap", { allowed });
+  return allowed;
+};
+```
+
+`await ledger.verifyIntegrity()` returns `true` while no entry has been changed.
+
+**Using LangGraph.js?** [`@supersemantics/vsl-langgraph`](https://github.com/supersemantics/VSL-Langgraphjs)
+compiles the same `Invariant` into a graph node. For a complete agent to start from, see the
+[LangGraph.js starter](https://github.com/supersemantics/supersemantics-VSL-Starters/tree/main/langgraph-js).
+
 ## Quick taste
 
 ```typescript
