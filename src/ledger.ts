@@ -4,8 +4,8 @@
  * Port of vsl_core/ledger.py, with one deliberate design departure: the
  * LedgerStore interface here is async (Promise/AsyncIterable-returning),
  * where Python's is fully synchronous. This isn't a 1:1 translation
- * choice -- it's forward-looking: a future HTTP-backed RemoteLedgerStore
- * for this package cannot be synchronous in JS (there is no synchronous
+ * choice -- it's forward-looking: any LedgerStore that does network or
+ * database I/O cannot be synchronous in JS (there is no synchronous
  * fetch), so making every LedgerStore implementation async from the start
  * -- including the in-memory/file ones below, even though neither strictly
  * needs it -- keeps the interface uniform rather than breaking it later.
