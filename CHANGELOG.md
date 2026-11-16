@@ -2,6 +2,16 @@
 
 What changed in each release, and why. Newest first. This package is the TypeScript port of [vsl-core](https://github.com/supersemantics/VSL-Core); releases track its rules, and the same assurance rules version means the same decisions in both.
 
+## 0.2.5 (unreleased): clearer note on why LedgerStore is async
+
+The code is unchanged from 0.2.4.
+
+**Before:** the comment at the top of `src/ledger.ts` (also shipped in `dist/`) explained the async `LedgerStore` interface with one specific store class as the example.
+
+**After:** it gives the general reason: any store that does network or database I/O can't be synchronous in JavaScript, so every store is async from the start.
+
+**Why:** the reason applies to every store, including your own; naming one class made it read as the only case.
+
 ## 0.2.4 (2026-11-14, tag `v0.2.4`): quickstart, gate a tool call in 5 lines
 
 The code is unchanged from 0.2.3.
