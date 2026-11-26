@@ -2,7 +2,7 @@
 
 What changed in each release, and why. Newest first. This package is the TypeScript port of [vsl-core](https://github.com/supersemantics/VSL-Core); releases track its rules, and the same assurance rules version means the same decisions in both.
 
-## 0.3.0 (unreleased): vsl-core 0.4's rules, no F2 claims
+## 0.3.0 (2026-11-27, tag `v0.3.0`): vsl-core 0.4's rules, no F2 claims
 
 **Before:** `PreNode`, `Invariant` and `AllowedState` required an `assuranceBasis` declaring F1/F2,
 and `assuranceLevel` derived HIGH, MEDIUM or LOW from it. Nothing checked the declaration against
