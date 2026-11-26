@@ -75,6 +75,34 @@ export const GATE_ALLOWED_KEY = "allowed";
 export const RULES_VERSION_KEY = "rules_version";
 
 /**
+ * An action record's payload key: { name }. Written by
+ * VerbaLedger.writeAction() when the guarded action actually runs;
+ * VerbaLedger.enforcement() compares it with the decision's gate records.
+ * Same spelling as the Python package.
+ */
+export const ACTION_KEY = "action";
+
+/**
+ * Whether a decision's gates held before its action, as the ledger shows it
+ * (VerbaLedger.enforcement). Computed from the order of records, never
+ * declared.
+ *
+ * BEFORE_ACTION: every recorded action came after an allowing decision from
+ * each gate recorded before it; or the gate denied and no action was
+ * recorded.
+ * AFTER_ACTION: an action was recorded with no gate decision before it, or
+ * after a gate's most recent decision was a deny. The gate did not hold that
+ * action.
+ * NOT_OBSERVED: the ledger can't tell. There is no action record to compare
+ * against, or no gate record at all.
+ */
+export enum Enforcement {
+  BEFORE_ACTION = "BEFORE_ACTION",
+  AFTER_ACTION = "AFTER_ACTION",
+  NOT_OBSERVED = "NOT_OBSERVED",
+}
+
+/**
  * What writeGateDecision reads from a Gamma estimate. A GammaEstimate
  * satisfies it; declared structurally so this module never imports metrics.
  */
@@ -616,6 +644,61 @@ export interface WriteOptions {
   payload?: Record<string, unknown>;
 }
 
+export interface WriteActionOptions extends Omit<WriteOptions, "payload" | "decisionId"> {
+  /** The decision's id, the same one its gate decisions were recorded under. */
+  decisionId: string;
+  extraPayload?: Record<string, unknown>;
+}
+
+function isGateRecord(entry: LedgerEntry): boolean {
+  return (
+    entry.entryType === LedgerEntryType.MONITOR &&
+    PRIMITIVE_NAME_KEY in entry.payload &&
+    typeof entry.payload[GATE_ALLOWED_KEY] === "boolean"
+  );
+}
+
+function isActionRecord(entry: LedgerEntry): boolean {
+  const action = entry.payload[ACTION_KEY];
+  return (
+    entry.entryType === LedgerEntryType.MONITOR &&
+    typeof action === "object" &&
+    action !== null &&
+    !Array.isArray(action)
+  );
+}
+
+function judgeEnforcement(records: LedgerEntry[], primitiveName: string | undefined): Enforcement {
+  const ordered = [...records].sort((a, b) => a.sequence - b.sequence);
+  const gates = ordered.filter(
+    (e) => isGateRecord(e) && (primitiveName === undefined || e.payload[PRIMITIVE_NAME_KEY] === primitiveName)
+  );
+  const actions = ordered.filter(isActionRecord);
+  if (gates.length === 0) {
+    return actions.length > 0 && primitiveName === undefined ? Enforcement.AFTER_ACTION : Enforcement.NOT_OBSERVED;
+  }
+  const latestBefore = (sequence: number): Map<unknown, boolean> => {
+    const latest = new Map<unknown, boolean>();
+    for (const g of gates) {
+      if (g.sequence < sequence) latest.set(g.payload[PRIMITIVE_NAME_KEY], g.payload[GATE_ALLOWED_KEY] as boolean);
+    }
+    return latest;
+  };
+  if (actions.length === 0) {
+    // A deny with no action after it held. An allow with no action record
+    // can't be judged: the action may have run unrecorded.
+    const latest = latestBefore(Number.POSITIVE_INFINITY);
+    return [...latest.values()].every(Boolean) ? Enforcement.NOT_OBSERVED : Enforcement.BEFORE_ACTION;
+  }
+  for (const action of actions) {
+    const latest = latestBefore(action.sequence);
+    if (latest.size === 0 || ![...latest.values()].every(Boolean)) {
+      return Enforcement.AFTER_ACTION;
+    }
+  }
+  return Enforcement.BEFORE_ACTION;
+}
+
 /** Façade over a LedgerStore implementing write/verifyIntegrity/audit. */
 export class VerbaLedger {
   readonly store: LedgerStore;
@@ -756,6 +839,69 @@ export class VerbaLedger {
   }
 
   /**
+   * Record that a guarded action actually ran, under the decision's
+   * `decisionId`. Write it after the action, from the same code path that
+   * performs it. Port of VerbaLedger.write_action; the payload keys are
+   * identical.
+   *
+   * Written as a MONITOR entry (drift_detected false: running an allowed
+   * action is not drift) whose payload carries `action` = { name }. Together
+   * with the decision's gate records it is what enforcement() reads: an
+   * action recorded before any gate decision, or after a deny, shows the
+   * gate did not hold it.
+   */
+  async writeAction(identityKey: string, actionName: string, options: WriteActionOptions): Promise<LedgerEntry> {
+    const { extraPayload, ...writeOptions } = options ?? ({} as WriteActionOptions);
+    if (typeof writeOptions.decisionId !== "string" || writeOptions.decisionId === "") {
+      throw new Error("writeAction needs the decisionId its gate decisions were recorded under.");
+    }
+    if (typeof actionName !== "string" || actionName.trim() === "") {
+      throw new Error("writeAction needs the action's name.");
+    }
+    const payload = {
+      ...(extraPayload ?? {}),
+      [ACTION_KEY]: { name: actionName },
+      [DRIFT_DETECTED_KEY]: false,
+    };
+    return this.write(LedgerEntryType.MONITOR, identityKey, { ...writeOptions, payload });
+  }
+
+  /**
+   * Whether this decision's gates held before its action, judged only from
+   * the order of its records (see Enforcement).
+   *
+   * Gate records are writeGateDecision() entries and action records are
+   * writeAction() entries, both under `decisionId`. Pass `primitiveName` to
+   * judge one gate only. For each action record: every gate with a record
+   * before it must have allowed in its most recent record, and at least one
+   * gate record must come first.
+   */
+  async enforcement(decisionId: string, options: { primitiveName?: string } = {}): Promise<Enforcement> {
+    const records: LedgerEntry[] = [];
+    for await (const entry of this.store.allEntries()) {
+      if (entry.decisionId === decisionId) records.push(entry);
+    }
+    return judgeEnforcement(records, options.primitiveName);
+  }
+
+  /** enforcement() for every decisionId in the ledger that has a gate or action record. */
+  async enforcementByDecision(): Promise<Record<string, Enforcement>> {
+    const byDecision = new Map<string, LedgerEntry[]>();
+    for await (const entry of this.store.allEntries()) {
+      if (entry.decisionId && (isGateRecord(entry) || isActionRecord(entry))) {
+        const list = byDecision.get(entry.decisionId) ?? [];
+        list.push(entry);
+        byDecision.set(entry.decisionId, list);
+      }
+    }
+    const result: Record<string, Enforcement> = {};
+    for (const [decisionId, records] of byDecision) {
+      result[decisionId] = judgeEnforcement(records, undefined);
+    }
+    return result;
+  }
+
+  /**
    * Return the chain's current tip, or null for an empty ledger. This is
    * the one fact an external anchoring service would need to witness the
    * chain independently over time -- vsl-core exposes the value and stops
@@ -806,7 +952,9 @@ export class VerbaLedger {
 
     const monitorEntries = entries.filter((e) => e.entryType === LedgerEntryType.MONITOR);
     if (maxMonitorGapSeconds !== undefined) {
-      const sortedMonitors = [...monitorEntries].sort((a, b) => a.timestamp - b.timestamp);
+      // Action records say an action ran, not that monitoring happened, so
+      // they can't fill a gap between monitor entries.
+      const sortedMonitors = monitorEntries.filter((e) => !isActionRecord(e)).sort((a, b) => a.timestamp - b.timestamp);
       const gapViolations: string[] = [];
       for (let i = 1; i < sortedMonitors.length; i++) {
         const prev = sortedMonitors[i - 1]!;

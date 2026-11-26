@@ -4,8 +4,6 @@
 //   node quickstart.mjs
 
 import {
-  AssuranceBasis,
-  F2Modification,
   Invariant,
   InvariantViolation,
   PlainJsReferenceAdapter,
@@ -17,8 +15,7 @@ function issueRefund({ orderId, amount }) { // your existing tool, unchanged
 
 // The 5 lines: a rule, the gate built from it, and a call to the gate before the tool runs.
 const withinCap = async (args) => args.amount <= 500;
-const cap = new Invariant({ name: "refund-cap", description: "Refunds of $500 or less.", rule: withinCap,
-  assuranceBasis: new AssuranceBasis(true, F2Modification.NONE) });
+const cap = new Invariant({ name: "refund-cap", description: "Refunds of $500 or less.", rule: withinCap });
 const gate = new PlainJsReferenceAdapter().compileInvariant(cap);
 
 async function refund(args) {

@@ -10,12 +10,8 @@
 
 import { Invariant, PreNode } from "../constructs.js";
 import { AutomationDeniedException, ConformanceError, InvariantViolation } from "../exceptions.js";
-import { AssuranceBasis, F2Modification, GammaEstimate } from "../metrics.js";
+import { GammaEstimate } from "../metrics.js";
 import { CompiledGate, VSLAdapter } from "./protocol.js";
-
-// These synthetic PreNodes are genuinely formation-layer, full-F2 checks --
-// HIGH is the correct, justified claim for them, not a lazy default.
-const HIGH_ASSURANCE_BASIS = new AssuranceBasis(true, F2Modification.FULL);
 
 function requireCallableGate(adapterName: string, methodName: string, gate: unknown): void {
   if (typeof gate !== "function") {
@@ -40,7 +36,6 @@ async function checkPreNodeBlocksBeforeSideEffect(adapter: VSLAdapter): Promise<
     name: "conformance-blocking",
     description: "Conformance check: below-threshold Gamma must block.",
     monitor: async () => new GammaEstimate({ gammaHat: 0.1 }),
-    assuranceBasis: HIGH_ASSURANCE_BASIS,
     gammaThreshold: 1.1,
   });
   const gate: CompiledGate = adapter.compilePreNode(preNode);
@@ -84,7 +79,6 @@ async function checkPreNodeAllowsAfterPass(adapter: VSLAdapter): Promise<string[
     name: "conformance-passing",
     description: "Conformance check: above-threshold Gamma must pass through.",
     monitor: async () => new GammaEstimate({ gammaHat: 5.0 }),
-    assuranceBasis: HIGH_ASSURANCE_BASIS,
     gammaThreshold: 1.1,
   });
   const gate: CompiledGate = adapter.compilePreNode(preNode);
@@ -123,7 +117,6 @@ async function checkInvariantViolationIsSpecificType(adapter: VSLAdapter): Promi
     name: "conformance-invariant-fail",
     description: "Conformance check: a failing rule must throw InvariantViolation.",
     rule: async () => false,
-    assuranceBasis: HIGH_ASSURANCE_BASIS,
   });
   const gate: CompiledGate = adapter.compileInvariant(invariant);
   requireCallableGate(adapter.constructor.name, "compileInvariant", gate);
@@ -155,7 +148,6 @@ async function checkInvariantPass(adapter: VSLAdapter): Promise<string[]> {
     name: "conformance-invariant-pass",
     description: "Conformance check: a passing rule must not throw.",
     rule: async () => true,
-    assuranceBasis: HIGH_ASSURANCE_BASIS,
   });
   const gate: CompiledGate = adapter.compileInvariant(invariant);
   requireCallableGate(adapter.constructor.name, "compileInvariant", gate);
@@ -184,7 +176,6 @@ async function checkGateReusableWithoutStateLeak(adapter: VSLAdapter): Promise<s
     name: "conformance-reusable",
     description: "Conformance check: a compiled gate must be reusable across calls.",
     monitor: async (candidateInput) => new GammaEstimate({ gammaHat: candidateInput === "good" ? 5.0 : 0.1 }),
-    assuranceBasis: HIGH_ASSURANCE_BASIS,
     gammaThreshold: 1.1,
   });
   const gate: CompiledGate = adapter.compilePreNode(preNode);

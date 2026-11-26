@@ -11,7 +11,52 @@
  * here. Port of vsl_core/constructs.py.
  */
 
-import { AssuranceBasis, AssuranceLevel, GammaEstimate, ROBUST_GAMMA_DEFAULT_THRESHOLD } from "./metrics.js";
+import { AssuranceBasis, AssuranceLevel, F2Modification, GammaEstimate, ROBUST_GAMMA_DEFAULT_THRESHOLD } from "./metrics.js";
+
+/**
+ * The placeholder's own type, so it is recognised with instanceof. Not
+ * exported: only this module creates one.
+ */
+class NotStatedBasis extends AssuranceBasis {}
+
+// Placeholder held by a construct whose caller did not pass assuranceBasis
+// (the normal case from 0.3.0). It exists only so adapters released before
+// 0.3.0, which read `construct.assuranceBasis.f2Modification`, keep working
+// against this release. It states nothing: assuranceLevel returns null for
+// it. Removed in 1.0 along with the field.
+const NOT_STATED: AssuranceBasis = new NotStatedBasis(true, F2Modification.NONE);
+
+/** The deprecation message for passing `assuranceBasis`, identical in meaning to vsl-core's. */
+export const ASSURANCE_BASIS_DEPRECATION =
+  "assuranceBasis is no longer used; enforcement is computed from the ledger " +
+  "(VerbaLedger.enforcement). Remove it; it will be rejected in 1.0.";
+
+const ASSURANCE_LEVEL_DEPRECATION =
+  "assuranceLevel is deprecated and will be removed in 1.0; this package no longer " +
+  "reports an assurance level. Use VerbaLedger.enforcement(decisionId).";
+
+const warned = new Set<string>();
+
+// Once per process and code, like Node's own deprecations, so a loop
+// building constructs prints one warning, not hundreds.
+function deprecate(message: string, code: string): void {
+  if (warned.has(code)) return;
+  warned.add(code);
+  if (typeof process !== "undefined" && typeof process.emitWarning === "function") {
+    process.emitWarning(message, { type: "DeprecationWarning", code });
+  }
+}
+
+function basisOrPlaceholder(basis: AssuranceBasis | undefined): AssuranceBasis {
+  if (basis === undefined || basis instanceof NotStatedBasis) return NOT_STATED;
+  deprecate(ASSURANCE_BASIS_DEPRECATION, "VSL_ASSURANCE_BASIS");
+  return basis;
+}
+
+function deprecatedLevel(basis: AssuranceBasis): AssuranceLevel | null {
+  deprecate(ASSURANCE_LEVEL_DEPRECATION, "VSL_ASSURANCE_LEVEL");
+  return basis instanceof NotStatedBasis ? null : basis.derivedLevel;
+}
 
 /**
  * Framework-agnostic monitor signature. An adapter's compile step is
@@ -26,7 +71,8 @@ export type FormationLayerIntervention = (deltaFactor: number) => Promise<boolea
 export interface AllowedStateInit {
   name: string;
   description: string;
-  assuranceBasis: AssuranceBasis;
+  /** @deprecated Ignored; passing it emits a DeprecationWarning. Removed in 1.0. */
+  assuranceBasis?: AssuranceBasis;
   measurement: string;
   validityConditions?: readonly string[];
 }
@@ -35,9 +81,7 @@ export interface AllowedStateInit {
  * A state meeting all required prerequisites, Constraints, rules, and
  * validity conditions.
  *
- * assuranceLevel is not set directly -- it's required to be derived from a
- * real AssuranceBasis (F1/F2 facts), so a caller can't claim HIGH without
- * stating what makes it HIGH.
+ * `assuranceBasis` is deprecated and ignored (see Invariant).
  */
 export class AllowedState {
   readonly name: string;
@@ -49,13 +93,14 @@ export class AllowedState {
   constructor(init: AllowedStateInit) {
     this.name = init.name;
     this.description = init.description;
-    this.assuranceBasis = init.assuranceBasis;
+    this.assuranceBasis = basisOrPlaceholder(init.assuranceBasis);
     this.measurement = init.measurement;
     this.validityConditions = init.validityConditions ?? [];
   }
 
-  get assuranceLevel(): AssuranceLevel {
-    return this.assuranceBasis.derivedLevel;
+  /** @deprecated The level of a passed assuranceBasis, else null. Removed in 1.0. */
+  get assuranceLevel(): AssuranceLevel | null {
+    return deprecatedLevel(this.assuranceBasis);
   }
 }
 
@@ -119,7 +164,8 @@ export interface InvariantInit {
   name: string;
   description: string;
   rule: (candidateInput: unknown) => Promise<boolean>;
-  assuranceBasis: AssuranceBasis;
+  /** @deprecated Ignored; passing it emits a DeprecationWarning. Removed in 1.0. */
+  assuranceBasis?: AssuranceBasis;
   scope?: string;
   cannotBeBypassed?: boolean;
   onViolation?: TerminalState | null;
@@ -129,8 +175,9 @@ export interface InvariantInit {
  * A persistent Constraint that cannot be bypassed. Violation triggers
  * IMMEDIATE_TERMINAL_STATE per the spec, not an ordinary Fallback.
  *
- * assuranceBasis is required, same discipline as AllowedState/PreNode.
- * assuranceLevel is derived from it, same pattern: not settable directly.
+ * `assuranceBasis` is deprecated and ignored: whether a gate held before its
+ * action is computed from the ledger (VerbaLedger.enforcement), never
+ * declared. Passing one emits a DeprecationWarning; it is removed in 1.0.
  *
  * onViolation names which TerminalState that immediate transition is
  * into. It's optional (an Invariant can exist before its Terminal State
@@ -151,14 +198,15 @@ export class Invariant {
     this.name = init.name;
     this.description = init.description;
     this.rule = init.rule;
-    this.assuranceBasis = init.assuranceBasis;
+    this.assuranceBasis = basisOrPlaceholder(init.assuranceBasis);
     this.scope = init.scope ?? "ALL_STATES";
     this.cannotBeBypassed = init.cannotBeBypassed ?? true;
     this.onViolation = init.onViolation ?? null;
   }
 
-  get assuranceLevel(): AssuranceLevel {
-    return this.assuranceBasis.derivedLevel;
+  /** @deprecated The level of a passed assuranceBasis, else null. Removed in 1.0. */
+  get assuranceLevel(): AssuranceLevel | null {
+    return deprecatedLevel(this.assuranceBasis);
   }
 }
 
@@ -188,7 +236,8 @@ export interface PreNodeInit {
   name: string;
   description: string;
   monitor: DriftMonitor;
-  assuranceBasis: AssuranceBasis;
+  /** @deprecated Ignored; passing it emits a DeprecationWarning. Removed in 1.0. */
+  assuranceBasis?: AssuranceBasis;
   gammaThreshold?: number;
   intervention?: FormationLayerIntervention | null;
   fallback?: Fallback;
@@ -213,7 +262,7 @@ export class PreNode {
     this.name = init.name;
     this.description = init.description;
     this.monitor = init.monitor;
-    this.assuranceBasis = init.assuranceBasis;
+    this.assuranceBasis = basisOrPlaceholder(init.assuranceBasis);
     this.gammaThreshold = init.gammaThreshold ?? ROBUST_GAMMA_DEFAULT_THRESHOLD;
     this.intervention = init.intervention ?? null;
     this.fallback = init.fallback ?? DEFAULT_FALLBACK;
@@ -226,8 +275,9 @@ export class PreNode {
     }
   }
 
-  get assuranceLevel(): AssuranceLevel {
-    return this.assuranceBasis.derivedLevel;
+  /** @deprecated The level of a passed assuranceBasis, else null. Removed in 1.0. */
+  get assuranceLevel(): AssuranceLevel | null {
+    return deprecatedLevel(this.assuranceBasis);
   }
 }
 
