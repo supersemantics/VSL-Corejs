@@ -8,7 +8,7 @@ same primitives are available to Node/TypeScript agent frameworks
 runtime alongside them.
 
 **Is:**
-- A faithful port of `vsl-core`'s constructs -- `PreNode`, `Invariant`, `AssuranceBasis`, `GammaEstimate`, `VerbaLedger`, `Cluster`, the conformance suite, and the Drift Class / Stabilisation Operator catalog.
+- A faithful port of `vsl-core`'s constructs -- `PreNode`, `Invariant`, `GammaEstimate`, `VerbaLedger` and its computed `Enforcement`, `Cluster`, the conformance suite, and the Drift Class / Stabilisation Operator catalog.
 - Framework-agnostic and model-agnostic, same as the Python original -- this package never imports an agent-framework package or model-provider SDK, and never will.
 - Zero runtime dependencies -- only Node built-ins (`node:crypto`, `node:fs`), same guarantee `vsl-core` makes for Python.
 
@@ -27,13 +27,10 @@ Your agent has a tool, say `issueRefund`. You want a rule checked **before** the
 call stopped if the rule fails. That check is a gate:
 
 ```javascript
-import {
-  AssuranceBasis, F2Modification, Invariant, InvariantViolation, PlainJsReferenceAdapter,
-} from "@supersemantics/vsl-core";
+import { Invariant, InvariantViolation, PlainJsReferenceAdapter } from "@supersemantics/vsl-core";
 
 const withinCap = async (args) => args.amount <= 500;
-const cap = new Invariant({ name: "refund-cap", description: "Refunds of $500 or less.", rule: withinCap,
-  assuranceBasis: new AssuranceBasis(true, F2Modification.NONE) });
+const cap = new Invariant({ name: "refund-cap", description: "Refunds of $500 or less.", rule: withinCap });
 const gate = new PlainJsReferenceAdapter().compileInvariant(cap);
 
 async function refund(args) {
@@ -45,10 +42,7 @@ async function refund(args) {
 What each line does:
 
 - `withinCap` is the rule: plain code that answers yes or no for this one call.
-- `Invariant` gives the rule a name and says how strong the check is. It runs before the action
-  (`true`: F1) and changes nothing about what a model produces (`F2Modification.NONE`). That makes its
-  assurance level LOW: it blocks, but it doesn't steer a model. `vsl-core`'s README explains
-  [F1/F2](https://github.com/supersemantics/VSL-Core#the-f1f2-assurance-distinction-read-this-before-trusting-any-assurance-level).
+- `Invariant` gives the rule a name and a description, which is how the record refers to it.
 - `compileInvariant` turns the rule into a gate: an async function that resolves when the rule holds
   and throws when it doesn't. `PlainJsReferenceAdapter` is the adapter for plain JavaScript, with no
   agent framework underneath.
@@ -68,12 +62,21 @@ const ledger = new VerbaLedger(); // in memory; new VerbaLedger(new JsonlLedgerS
 
 const withinCap = async (args) => {
   const allowed = args.amount <= 500;
-  await ledger.writeGateDecision("refund-agent", "refund-cap", { allowed });
+  await ledger.writeGateDecision("refund-agent", "refund-cap", { allowed, decisionId: args.orderId });
   return allowed;
 };
+
+async function refund(args) {
+  await gate(args);
+  const result = issueRefund(args);
+  await ledger.writeAction("refund-agent", "issueRefund", { decisionId: args.orderId });
+  return result;
+}
 ```
 
-`await ledger.verifyIntegrity()` returns `true` while no entry has been changed.
+`await ledger.enforcement("A100")` then reads `BEFORE_ACTION`: the gate allowed the refund before it
+ran. A refund that ran without an allowing decision first reads `AFTER_ACTION`. `await
+ledger.verifyIntegrity()` returns `true` while no entry has been changed.
 
 **Using LangGraph.js?** [`@supersemantics/vsl-langgraph`](https://github.com/supersemantics/VSL-Langgraphjs)
 compiles the same `Invariant` into a graph node. For a complete agent to start from, see the
@@ -83,8 +86,6 @@ compiles the same `Invariant` into a graph node. For a complete agent to start f
 
 ```typescript
 import {
-  AssuranceBasis,
-  F2Modification,
   GammaEstimate,
   PreNode,
   VerbaLedger,
@@ -97,7 +98,6 @@ const preNode = new PreNode({
     const amount = (candidateInput as { amount: number }).amount;
     return new GammaEstimate({ gammaHat: amount <= 1000 ? 2.0 : 0.0 });
   },
-  assuranceBasis: new AssuranceBasis(true, F2Modification.NONE),
 });
 
 const ledger = new VerbaLedger();
@@ -111,6 +111,19 @@ do in Python -- via a `VSLAdapter` implementation. See
 in the Python README for what "conformant" actually means; the same
 contract (`compilePreNode`/`compileInvariant`, verified by
 `runConformanceSuite`) applies here.
+
+## What a gate reports
+
+Gates take no assurance claim: build a `PreNode` or `Invariant` from its name, description and monitor
+or rule. Whether a gate ran before its action is computed from the ledger, not declared:
+`ledger.enforcement(decisionId)` returns `BEFORE_ACTION`, `AFTER_ACTION` or `NOT_OBSERVED` from the
+order of the decision's `writeGateDecision` and `writeAction` records, and
+`ledger.enforcementByDecision()` does it for every decision. See
+[vsl-core's "What a gate reports"](https://github.com/supersemantics/VSL-Core#what-a-gate-reports).
+
+Code written for 0.2.x that still passes `assuranceBasis` keeps working: it is ignored, and Node prints
+one `DeprecationWarning` (`VSL_ASSURANCE_BASIS`). Delete the argument. `AssuranceBasis`,
+`F2Modification` and `AssuranceLevel` still import, and are removed in 1.0.
 
 ## Where this diverges from `vsl-core`
 
@@ -138,10 +151,10 @@ disclosed here and in `ledger.ts`'s own docstring, not silently narrowed.
 Don't point multiple processes at the same `JsonlLedgerStore` file until
 this gap is closed.
 
-Everything else -- `AssuranceBasis`'s validation and derivation table,
-`GammaEstimate.sufficient()`'s robust-gamma gating, `Cluster`'s
+Everything else -- `GammaEstimate.sufficient()`'s robust-gamma gating, `Cluster`'s
 constituent-coverage check, the five `audit()` checks and their causal
-correlation via `causedBy`, the conformance suite's five checks -- is a
+correlation via `causedBy`, `enforcement()`'s reading of the record, the conformance suite's five
+checks -- is a
 direct, faithful port of the same logic `vsl-core` implements in Python.
 
 ## The catalog
@@ -168,11 +181,11 @@ npm install @supersemantics/vsl-core
 ```
 src/
 ├── exceptions.ts        VSLError hierarchy
-├── metrics.ts            Delta, Gamma, GES, EEF, AssuranceBasis, F2Modification
+├── metrics.ts            Delta, Gamma, GES, EEF
 ├── identity.ts            IdentityKey, ClusterKey, Instance, Evidence
 ├── constructs.ts          PreNode, Invariant, Fallback, TerminalState, AllowedState
 ├── cluster.ts               Cluster, ClusterPreNode
-├── ledger.ts                VerbaLedger, LedgerEntry, LedgerStore + 2 implementations
+├── ledger.ts                VerbaLedger, LedgerEntry, Enforcement, LedgerStore + 2 implementations
 ├── governance.ts            GovernanceAuthority, HumanAuthorisedTransition, Specification
 ├── catalog/                 Drift Class / Stabilisation Operator / Legion data + loader
 └── conformance/              VSLAdapter protocol, runConformanceSuite, reference adapter
@@ -180,7 +193,7 @@ src/
 
 ## Status
 
-Alpha. 51 tests pass across every module, including a full round trip
+Alpha. 184 tests pass across every module, including a full round trip
 through the built `dist/` output (not just source via the test runner).
 Strict-mode TypeScript, 0 known vulnerabilities, zero runtime dependencies.
 

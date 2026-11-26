@@ -23,22 +23,9 @@ export const ROBUST_GAMMA_DEFAULT_THRESHOLD = 1.1;
 export const ROBUST_GAMMA_HIGH_STAKES_THRESHOLD = 1.2;
 
 /**
- * HIGH / MEDIUM / LOW confidence rating per the F1/F2 test.
- *
- * A mechanism satisfying F1 (pre-commitment) but only partial F2 (energy-
- * landscape modification) -- e.g. a gate in front of a hosted model API
- * call whose prompt the application writes -- caps at MEDIUM, never HIGH.
- * This distinction must never be blurred by any code or docs built on top
- * of this package.
- *
- * The level measures one thing: how deeply governance shapes what the
- * model produces. Whether a gate blocks the action before it happens is
- * F1, and is best reported on its own rather than read off the level -- a
- * gate with F1=true and F2=NONE is LOW here, yet it still stops every
- * action it denies.
- *
- * Prefer constructing this via AssuranceBasis.derivedLevel rather than
- * setting it directly.
+ * @deprecated Removed in 1.0. This package no longer reports an assurance
+ * level. Kept only so existing imports keep working. What it reports instead
+ * is Enforcement (ledger.ts), computed from the ledger.
  */
 export enum AssuranceLevel {
   HIGH = "HIGH",
@@ -47,27 +34,8 @@ export enum AssuranceLevel {
 }
 
 /**
- * How fully an intervention modifies the energy function
- * E_gov(x) = E_0(x) + U(x), per the source spec's F2 test.
- *
- * F2 is judged at the call the gate guards: what does the application do
- * to the model there? It is never earned by the gate itself -- allowing or
- * blocking an action changes nothing about what a model produces.
- *
- * FULL: directly modifies the energy function (logit adjustment,
- * activation steering, fine-tuning, constitutional training). Needs a
- * model whose internals the application controls; a hosted model API
- * rules it out.
- * PARTIAL: shapes output through attention/context rather than direct
- * energy modification -- the application changes what the model sees (its
- * own system prompt, RAG context injection, redacting the input).
- * INDIRECT: affects sampling without touching the energy function itself
- * (temperature adjustment).
- * NONE: the gate only allows or blocks, and the application shapes nothing
- * at the guarded call -- or no model is involved at all (an amount cap
- * before issueRefund, an allow-list before sendEmail).
- *
- * When unsure, pick the lowest value the code honestly supports.
+ * @deprecated Removed in 1.0. Has no effect: this package takes no F2 value
+ * from callers. Kept only so existing imports keep working.
  */
 export enum F2Modification {
   FULL = "FULL",
@@ -77,39 +45,10 @@ export enum F2Modification {
 }
 
 /**
- * The F1/F2 facts an AssuranceLevel must be derived from, rather than
- * asserted directly.
- *
- * Before this type existed, a caller could freely set an assurance level
- * on a mechanism that was actually output-layer. AssuranceBasis makes the
- * two load-bearing facts (F1: does this run before commitment? F2: how
- * fully does it modify the energy function?) the only inputs, and derives
- * the level from them.
- *
- * derivedLevel implements the source table exhaustively:
- *   f1PreCommitment=false                          -> LOW,  for any F2 value
- *   f1PreCommitment=true,  f2Modification=FULL      -> HIGH
- *   f1PreCommitment=true,  f2Modification in {PARTIAL, INDIRECT} -> MEDIUM
- *   f1PreCommitment=true,  f2Modification=NONE      -> LOW
- *
- * That last row (f1=true, f2=NONE) is not in the source paper's table --
- * the paper never covers a mechanism that runs before commitment but
- * claims zero energy-landscape effect. This is a deliberate interpretive
- * extension, not a spec fact: a check that runs early but does nothing to
- * the distribution isn't governance in the Gamma-sufficiency sense, so it
- * is treated the same as output-layer (LOW) rather than left undefined.
- * LOW here describes influence on the model, not enforcement: such a gate
- * still blocks every action it denies (that is its F1).
- *
- * The constructor requires f1PreCommitment to actually be a boolean and
- * f2Modification to actually be an F2Modification member. Before these
- * checks existed, a caller could pass null/undefined and derivedLevel
- * would silently fall through every branch to LOW -- an accidental,
- * unflagged LOW indistinguishable from a deliberate one. This does not
- * make derivedLevel *correct* (nothing here can verify a stated F1/F2 fact
- * reflects what the gated mechanism actually does), it only guarantees
- * both values were a real, deliberate choice rather than an unnoticed
- * accident.
+ * @deprecated Removed in 1.0. Constructs no longer take it: passing one as
+ * `assuranceBasis` emits a DeprecationWarning and changes nothing. Kept only
+ * so existing imports and adapters released before 0.3.0 keep working. Its
+ * validation and derivedLevel are unchanged.
  */
 export class AssuranceBasis {
   readonly f1PreCommitment: boolean;

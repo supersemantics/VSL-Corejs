@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Invariant, TerminalState } from "../../src/constructs.js";
 import { InvariantViolation } from "../../src/exceptions.js";
-import { AssuranceBasis, F2Modification } from "../../src/metrics.js";
 import { PlainJsReferenceAdapter } from "../../src/conformance/reference_adapter.js";
 import { runConformanceSuite } from "../../src/conformance/suite.js";
 
@@ -18,7 +17,6 @@ describe("PlainJsReferenceAdapter", () => {
       name: "hard-cap",
       description: "x",
       rule: async () => false,
-      assuranceBasis: new AssuranceBasis(true, F2Modification.FULL),
       onViolation: halted,
     });
     const gate = adapter.compileInvariant(invariant);
@@ -32,7 +30,6 @@ describe("PlainJsReferenceAdapter", () => {
       name: "hard-cap",
       description: "x",
       rule: async () => false,
-      assuranceBasis: new AssuranceBasis(true, F2Modification.FULL),
     });
     const gate = adapter.compileInvariant(invariant);
 

@@ -2,6 +2,37 @@
 
 What changed in each release, and why. Newest first. This package is the TypeScript port of [vsl-core](https://github.com/supersemantics/VSL-Core); releases track its rules, and the same assurance rules version means the same decisions in both.
 
+## 0.3.0 (unreleased): vsl-core 0.4's rules, no F2 claims
+
+**Before:** `PreNode`, `Invariant` and `AllowedState` required an `assuranceBasis` declaring F1/F2,
+and `assuranceLevel` derived HIGH, MEDIUM or LOW from it. Nothing checked the declaration against
+what the code does, so a gate could claim `F2Modification.FULL` with no basis in fact.
+
+**After:** the constructs take no assurance basis. Whether a gate held before its action is computed
+from the ledger, as in vsl-core 0.4.0:
+
+- `ledger.writeAction(identityKey, actionName, { decisionId })` records that the guarded action ran.
+- `ledger.enforcement(decisionId)` returns `Enforcement.BEFORE_ACTION`, `AFTER_ACTION` or
+  `NOT_OBSERVED` from the order of the decision's gate and action records;
+  `ledger.enforcementByDecision()` does it for every decision. Pass `{ primitiveName }` to judge one
+  gate.
+- `audit()`'s monitoring-gap check no longer counts action records as monitoring. It still has five
+  checks, and the assurance rules version stays `2026.10`.
+
+Code that still passes `assuranceBasis` keeps working: the value is ignored and Node prints one
+`DeprecationWarning` (`VSL_ASSURANCE_BASIS`). `assuranceLevel` is deprecated too: it returns `null`
+for a construct built without a basis. A construct without one still has an `assuranceBasis`
+placeholder, so adapters released before 0.3.0 that read `assuranceBasis.f2Modification` keep working.
+`AssuranceBasis`, `F2Modification` and `AssuranceLevel` still import; all three are removed in 1.0.
+The conformance suite builds its gates without a basis. The README and `examples/quickstart.mjs`
+show gates without one, and the README records the action and reads `enforcement()`.
+
+**Typing:** `assuranceLevel` is now `AssuranceLevel | null`, and `assuranceBasis` is optional in
+every construct's init type.
+
+**Why:** a declared level could not be checked, so it could be wrong without anyone knowing; the
+order of records in the ledger can be.
+
 ## 0.2.5 (2026-11-17, tag `v0.2.5`): clearer note on why LedgerStore is async
 
 The code is unchanged from 0.2.4.
